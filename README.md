@@ -6,8 +6,10 @@ measures how execution time and throughput scale with the total dispatch volume 
 Reference implementation for **_Device-Aware Dispatch Sizing and QoE-Aware Work
 Allocation for WebGPU Compute_** (under review).
 
-**Live demo:** <!-- TODO(authors): paste the GitHub Pages URL once Pages is enabled -->
-`https://<user>.github.io/webgpu-dispatch-probe/`
+**Live demo:** <https://rockthepeople.github.io/webgpu-dispatch-probe/>
+
+> The page goes live once the Pages workflow has run for the first time. Pages is
+> already configured to build from GitHub Actions; see [Deployment](#deployment).
 
 ## What this is
 
@@ -104,6 +106,13 @@ code for it is included here.
 
 Frame-rate measurement and coefficient fitting were performed manually and are not part
 of this repository.
+
+## Deployment
+
+GitHub Pages is already enabled for this repository with the source set to **GitHub
+Actions**, and `vite.config.js` sets `base: '/webgpu-dispatch-probe/'` to match the
+repository name. `.github/workflows/pages.yml` runs `npm ci && npm run build` on every
+push to `main` and publishes `dist/`.
 
 ## Data
 
