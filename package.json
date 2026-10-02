@@ -1,0 +1,16 @@
+{
+  "name": "webgpu-dispatch-probe",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SHA-256 WGSL compute probe for measuring WebGPU dispatch volume vs. throughput",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^7.2.4"
+  }
+}
