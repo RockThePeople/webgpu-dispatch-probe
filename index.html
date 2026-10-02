@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebGPU Dispatch Probe</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>WebGPU Dispatch Probe</h1>
+      <p class="sub">
+        SHA-256 WGSL compute shader &mdash; one independent input per thread, one
+        <code>dispatchWorkgroups()</code> per measurement.
+        Reference implementation for <em>Device-Aware Dispatch Sizing and QoE-Aware
+        Work Allocation for WebGPU Compute</em> (under review).
+      </p>
+
+      <section id="support" class="panel">
+        <h2>1. Environment</h2>
+        <div id="support-body">Checking WebGPU support&hellip;</div>
+      </section>
+
+      <section class="panel">
+        <h2>2. Dispatch volume</h2>
+        <div class="grid">
+          <label>Total threads N
+            <span class="row">
+              <input id="n-value" type="number" min="1" step="1" value="16" />
+              <select id="n-unit">
+                <option value="1000000" selected>&times; 10^6</option>
+                <option value="1">&times; 1</option>
+              </select>
+            </span>
+          </label>
+          <label>workgroup_size (x)
+            <input id="wgs-x" type="number" min="1" step="1" value="64" />
+          </label>
+          <label>Repeat runs per point
+            <input id="repeat" type="number" min="1" max="20" step="1" value="3" />
+          </label>
+        </div>
+        <div id="plan" class="plan">&mdash;</div>
+        <p class="note" id="warn-big" hidden>
+          ⚠ Large N can trip the GPU watchdog and lose the device. If that happens the
+          page will say so; reduce N and reload.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>3. Run</h2>
+        <div class="row buttons">
+          <button id="btn-run" disabled>Run single N</button>
+          <button id="btn-sweep" disabled>Run sweep (1 … 1024 &times; 10^6)</button>
+          <button id="btn-verify" disabled>Verify SHA-256</button>
+          <button id="btn-xlsx" disabled>Export Excel</button>
+          <button id="btn-csv" disabled>Export CSV</button>
+        </div>
+        <div id="status" class="status">Idle.</div>
+      </section>
+
+      <section class="panel">
+        <h2>4. Correctness check</h2>
+        <p class="note">
+          First / middle / last thread of the planned dispatch, GPU digest vs
+          <code>crypto.subtle.digest('SHA-256', …)</code> applied twice. Runs outside the
+          timed loop.
+        </p>
+        <div id="verify-body" class="mono">Not run yet.</div>
+      </section>
+
+      <section class="panel">
+        <h2>5. Results</h2>
+        <div class="tablewrap">
+          <table id="results">
+            <thead>
+              <tr>
+                <th>N (threads)</th><th>workgroup_size</th><th>dispatchWorkgroups</th>
+                <th>runs (s)</th><th>mean (ms)</th><th>MH/s</th>
+              </tr>
+            </thead>
+            <tbody><tr class="empty"><td colspan="6">No measurements yet.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer id="method">
+        <strong>Timing method:</strong> <code>performance.now()</code> is read before buffer and
+        pipeline creation and again after the result buffer's <code>mapAsync()</code> resolves;
+        <code>mapAsync()</code> completion is the GPU-work barrier. No timestamp-query is used, and
+        shader-module plus pipeline creation fall inside the timed window &mdash; exactly as in the
+        code that produced the paper's numbers.
+      </footer>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
