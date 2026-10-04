@@ -62,9 +62,9 @@
       <section class="panel">
         <h2>4. Correctness check</h2>
         <p class="note">
-          First / middle / last thread of the planned dispatch, GPU digest vs
-          <code>crypto.subtle.digest('SHA-256', …)</code> applied twice. Runs outside the
-          timed loop.
+          Input indices of the first / middle / last thread, recomputed on the GPU one at a
+          time and compared with <code>crypto.subtle.digest('SHA-256', &hellip;)</code> applied
+          twice. Runs outside the timed loop.
         </p>
         <div id="verify-body" class="mono">Not run yet.</div>
       </section>
@@ -88,8 +88,7 @@
         <strong>Timing method:</strong> <code>performance.now()</code> is read before buffer and
         pipeline creation and again after the result buffer's <code>mapAsync()</code> resolves;
         <code>mapAsync()</code> completion is the GPU-work barrier. No timestamp-query is used, and
-        shader-module plus pipeline creation fall inside the timed window &mdash; exactly as in the
-        code that produced the paper's numbers.
+        shader-module plus pipeline creation fall inside the timed window.
       </footer>
     </main>
     <script type="module" src="/src/main.js"></script>
