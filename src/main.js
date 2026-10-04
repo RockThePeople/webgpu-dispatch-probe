@@ -1,5 +1,5 @@
 // UI wiring. No measurement logic lives here: it calls measurePoint()/runSweep()
-// from probe.js and renders what they return.
+// and renders what they return.
 
 import { setupDevice, planDispatch, measurePoint, runSweep, MAX_PER_DIM } from './probe.js';
 import { verifyDispatch } from './verify.js';
@@ -168,16 +168,16 @@ el.verifyBtn.addEventListener('click', async () => {
     const plan = currentPlan();
     if (!plan) return;
     setBusy(true);
-    setStatus('Verifying digests against crypto.subtle …');
+    setStatus('Comparing GPU output against crypto.subtle …');
     try {
         const results = await verifyDispatch(env.device, plan);
         el.verify.innerHTML = results.map((r) => {
             const mark = r.ok ? '<span class="ok">PASS</span>' : '<span class="no">FAIL</span>';
-            return `<div>${mark} nonce ${int(r.nonce)}<br>gpu      ${r.gpu}<br>expected ${r.expected}</div>`;
+            return `<div>${mark} input #${int(r.index)}<br>gpu      ${r.gpu}<br>expected ${r.expected}</div>`;
         }).join('');
         const allOk = results.every((r) => r.ok);
         setStatus(allOk
-            ? `SHA-256 verified on ${results.length} threads (first / middle / last).`
+            ? `SHA-256 output matches the reference for ${results.length} input indices.`
             : 'Digest mismatch — see the correctness check panel.', allOk ? '' : 'bad');
     } catch (e) {
         setStatus(`Verification failed: ${e.message}`, 'bad');

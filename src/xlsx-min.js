@@ -1,15 +1,5 @@
-// Minimal, dependency-free .xlsx writer.
-//
-// Only what this page needs: one worksheet built from an array of arrays, with
-// numbers written as numbers and everything else as inline strings. Entries are
-// stored uncompressed (ZIP method 0), which Excel, LibreOffice and Numbers all
-// accept.
-//
-// Written by hand rather than pulling in SheetJS because the npm `xlsx` package
-// is pinned at 0.18.5 with two unfixable high-severity advisories
-// (GHSA-4r6h-8v6p-xvw6, GHSA-5pgg-2g8v-p4x9). Both are parser bugs and this
-// page only writes, but a public research artifact should not ship a dependency
-// whose audit status can never be cleared.
+// Minimal, dependency-free .xlsx writer: one worksheet from an array of arrays,
+// numbers as numbers and everything else as inline strings, stored uncompressed.
 
 const CRC_TABLE = (() => {
     const table = new Uint32Array(256);

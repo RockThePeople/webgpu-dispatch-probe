@@ -1,15 +1,13 @@
-// SHA-256 WGSL compute shader (verbatim from the paper's measurement code).
-// Source: webgpu_FE/src/shader.js at commit bf29544, lines 132-332 -- unmodified.
-// Thread -> input mapping: nonce = baseNonceOffset + gid.x + gid.y*grid_width + gid.z*grid_width*grid_height
-// so every invocation hashes a distinct 80-byte message (76-byte header || 4-byte big-endian nonce).
-// See THIRD_PARTY_NOTICES.md for the origin of the SHA-256 core.
+// SHA-256 WGSL compute shader. Each invocation derives its own index from
+// global_invocation_id and hashes an 80-byte message (76-byte input || 4-byte
+// big-endian index). See THIRD_PARTY_NOTICES.md for the SHA-256 core's origin.
 
 const wgslCode = (dispatchSize, workgroupSize, iterCount, totalThread, isTestMode) => {
     const gridWidthX = workgroupSize[0] * dispatchSize[0];
     const gridHeightY = workgroupSize[1] * dispatchSize[1];
-    const baseNonceOffset = iterCount * totalThread;
+    const baseIndex = iterCount * totalThread;
     const earlyExitLogic = isTestMode
-        ? "// [TEST MODE] Early Exit Disabled for Benchmarking"
+        ? "// benchmark mode: no early exit, every thread runs to completion"
         : "if (atomicLoad(&outputState[4]) == 1u) { return; }";
 
     return `
@@ -22,7 +20,7 @@ struct SHA256_CTX {
 };
 
 @group(0) @binding(0) var<storage, read> input : array<u32>;
-@group(0) @binding(1) var<storage, read> targetHash : array<u32>;
+@group(0) @binding(1) var<storage, read> threshold : array<u32>;
 @group(0) @binding(2) var<storage, read_write> outputState : array<atomic<u32>>;
 
 const SHA256_BLOCK_SIZE = 32;
@@ -135,19 +133,17 @@ fn sha256_final(ctx : ptr<function, SHA256_CTX>, hash:  ptr<function, array<u32,
     }
 }
 
-fn u32_array_less_than(hash : ptr<function, array<u32, SHA256_BLOCK_SIZE>>) -> bool {
+fn below_threshold(hash : ptr<function, array<u32, SHA256_BLOCK_SIZE>>) -> bool {
     for (var i : u32 = 0; i < SHA256_BLOCK_SIZE; i++) {
-        if (i >= arrayLength(&targetHash)) { break; } 
-        if ((*hash)[i] > targetHash[i]) { return false; }
-        else if ((*hash)[i] < targetHash[i]) { return true; }
+        if (i >= arrayLength(&threshold)) { break; } 
+        if ((*hash)[i] > threshold[i]) { return false; }
+        else if ((*hash)[i] < threshold[i]) { return true; }
     }
     return true;
 }
 
-// [수정됨] Bitwise Operation을 사용하여 32비트 정수 전체 범위를 바이트 배열로 변환
-fn nonce_to_array(n: u32) -> array<u32, 4> {
+fn u32_to_bytes(n: u32) -> array<u32, 4> {
     var result : array<u32, 4>;
-    // Big Endian 방식 (일반적인 SHA-256 입력 처리)
     result[0] = (n >> 24) & 0xFF;
     result[1] = (n >> 16) & 0xFF;
     result[2] = (n >> 8) & 0xFF;
@@ -162,20 +158,19 @@ fn main(@builtin(global_invocation_id) global_invocation_id : vec3<u32>) {
     var ctx : SHA256_CTX;
     var hash : array<u32, SHA256_BLOCK_SIZE>;
     var local_input : array<u32, 80>;
-    var nonce_array : array<u32, 4>;
+    var idx_bytes : array<u32, 4>;
 
     let grid_width : u32 = ${gridWidthX}u;
     let grid_height : u32 = ${gridHeightY}u;
 
-    // [수정됨] baseNonceOffset을 문자열 치환 시 바로 적용하고, u32 캐스팅 명시
-    let nonce : u32 = u32(${baseNonceOffset}) + 
+    let idx : u32 = u32(${baseIndex}) + 
                       global_invocation_id.x + 
                       (global_invocation_id.y * grid_width) +
                       (global_invocation_id.z * grid_width * grid_height);
 
     for(var i:u32 = 0; i<inputLen; i++){ local_input[i] = input[i]; }
-    nonce_array = nonce_to_array(nonce);
-    for(var i:u32 = 0; i<4; i++){ local_input[i+inputLen] = nonce_array[i]; }
+    idx_bytes = u32_to_bytes(idx);
+    for(var i:u32 = 0; i<4; i++){ local_input[i+inputLen] = idx_bytes[i]; }
 
     // First Hash
     ctx.datalen = 0; ctx.bitlen[0] = 0; ctx.bitlen[1] = 0;
@@ -189,13 +184,13 @@ fn main(@builtin(global_invocation_id) global_invocation_id : vec3<u32>) {
     sha256_update_2(&ctx, &hash);
     sha256_final(&ctx, &hash);
 
-    if(u32_array_less_than(&hash)) {
+    if(below_threshold(&hash)) {
         let old_value = atomicExchange(&outputState[4], 1u);
         if (old_value == 0u) {
-            atomicStore(&outputState[0], nonce_array[0]);
-            atomicStore(&outputState[1], nonce_array[1]);
-            atomicStore(&outputState[2], nonce_array[2]);
-            atomicStore(&outputState[3], nonce_array[3]);
+            atomicStore(&outputState[0], idx_bytes[0]);
+            atomicStore(&outputState[1], idx_bytes[1]);
+            atomicStore(&outputState[2], idx_bytes[2]);
+            atomicStore(&outputState[3], idx_bytes[3]);
             
             for (var k = 0u; k < 32u; k++) {
                 atomicStore(&outputState[5u + k], hash[k]);

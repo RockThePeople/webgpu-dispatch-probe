@@ -20,8 +20,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-NOTE: the SHA-256 WGSL shader in src/shader.wgsl.js is derived from third-party
-code. See THIRD_PARTY_NOTICES.md -- its origin is not yet fully confirmed and
-one candidate origin is Apache-2.0, which would require that file to keep its
-own notice rather than be covered by this MIT grant.

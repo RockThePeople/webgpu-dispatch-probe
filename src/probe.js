@@ -1,12 +1,6 @@
-// Measurement core. The dispatch + timing path below is verbatim from the paper's
-// measurement code (webgpu_FE/src/shader.js @ bf29544 lines 1-130) and must not be
-// changed: the published numbers were produced by exactly this code.
-//
-// Timing method (reported verbatim on the page, see P8 in the README):
-//   performance.now() is taken before buffer+pipeline creation and read again after
-//   the result buffer's mapAsync() resolves. mapAsync completion is the GPU-work
-//   completion barrier; no timestamp-query is used. Note that shader module and
-//   pipeline creation fall inside the timed window, exactly as in the original code.
+// Measurement core: buffer and pipeline setup, a single dispatchWorkgroups()
+// call, and the timing around it. performance.now() is read before buffer and
+// pipeline creation and again once the result buffer's mapAsync() resolves.
 
 import { wgslCode } from './shader.wgsl.js';
 
@@ -34,7 +28,7 @@ const GPUMapMode = {
     WRITE: 0x0002
 };
 
-async function runShader(GPUdevice, headerArray, targetArray, wgs_x, wgs_y, wgs_z, dwg_x, dwg_y, dwg_z, itercount, totalThread, isTestMode ) {
+async function runShader(GPUdevice, inputArray, thresholdArray, wgs_x, wgs_y, wgs_z, dwg_x, dwg_y, dwg_z, itercount, totalThread, isTestMode ) {
 
     const start = performance.now();
     const device = GPUdevice;
@@ -42,21 +36,21 @@ async function runShader(GPUdevice, headerArray, targetArray, wgs_x, wgs_y, wgs_
     const workgroupSize = [wgs_x, wgs_y, wgs_z];
     const dispatchSize = [dwg_x, dwg_y, dwg_z];
 
-    const headerBuffer = device.createBuffer({
+    const inputBuffer = device.createBuffer({
         mappedAtCreation: true,
-        size: headerArray.byteLength,
+        size: inputArray.byteLength,
         usage: GPUBufferUsage.STORAGE,
     });
-    new Int32Array(headerBuffer.getMappedRange()).set(headerArray);
-    headerBuffer.unmap();
+    new Int32Array(inputBuffer.getMappedRange()).set(inputArray);
+    inputBuffer.unmap();
 
-    const targetBuffer = device.createBuffer({
+    const thresholdBuffer = device.createBuffer({
         mappedAtCreation: true,
-        size: targetArray.byteLength,
+        size: thresholdArray.byteLength,
         usage: GPUBufferUsage.STORAGE,
     });
-    new Int32Array(targetBuffer.getMappedRange()).set(targetArray);
-    targetBuffer.unmap();
+    new Int32Array(thresholdBuffer.getMappedRange()).set(thresholdArray);
+    thresholdBuffer.unmap();
 
     const resultElementCount = 4 + 1 + 32;
     const resultBufferSize = Uint32Array.BYTES_PER_ELEMENT * resultElementCount;
@@ -81,8 +75,8 @@ async function runShader(GPUdevice, headerArray, targetArray, wgs_x, wgs_y, wgs_
     const bindGroup = device.createBindGroup({
         layout: bindGroupLayout,
         entries: [
-            { binding: 0, resource: { buffer: headerBuffer } },
-            { binding: 1, resource: { buffer: targetBuffer } },
+            { binding: 0, resource: { buffer: inputBuffer } },
+            { binding: 1, resource: { buffer: thresholdBuffer } },
             { binding: 2, resource: { buffer: resultBuffer } }
         ]
     });
@@ -120,18 +114,17 @@ async function runShader(GPUdevice, headerArray, targetArray, wgs_x, wgs_y, wgs_
     const successFlag = resultArray[4];
 
     if (successFlag === 1) {
-        const nonce = resultArray.slice(0, 4);
+        const index = resultArray.slice(0, 4);
         const hashBytes = resultArray.slice(5, 5 + 32);
 
         const hashHex = Array.from(hashBytes)
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');
 
-        console.log("✅ Mining Successful!");
         readBuffer.unmap();
         return {
             success: true,
-            nonce: nonce,
+            index: index,
             hash: hashHex,
             time: time
         };
@@ -141,21 +134,13 @@ async function runShader(GPUdevice, headerArray, targetArray, wgs_x, wgs_y, wgs_
     }
 };
 
-// ---------------------------------------------------------------------------
-// Everything below this line is NOT part of the original timed measurement
-// path. It only sets up the device, chooses dispatch dimensions, and drives
-// the loop. runShader() above is untouched.
-// ---------------------------------------------------------------------------
+// Fixed 76-byte input. Each thread appends its own 4-byte index to this, so
+// every invocation hashes a distinct 80-byte message.
+const PROBE_INPUT = '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b';
 
-// 76-byte block header, verbatim from webgpu_FE/src/AutoRunShader.jsx:7.
-// The shader reads input[0..75] and appends the 4-byte big-endian nonce,
-// hashing an 80-byte message with double SHA-256.
-const PROBE_HEADER = '00000020a790cb4c5d8b0626334258f255e606ba5cdd6aab675102000000000000000000d291de09276913782ecb9e9ff8de2a274a6575915311699c61cf906b5ed19120ca14bf67ba125015';
+// Comparison value for the shader's threshold check.
+const PROBE_THRESHOLD = '0000008000000000000000000000000000000000000000000000000000000000';
 
-// Target used for throughput runs, verbatim from AutoRunShader.jsx:8.
-const PROBE_TARGET = '0000008000000000000000000000000000000000000000000000000000000000';
-
-// verbatim from webgpu_FE/src/util.js:11-17
 function hexStringToUint32Array(hexString) {
     const byteArray = new Uint32Array(hexString.length / 2);
     for (let i = 0; i < hexString.length; i += 2) {
@@ -164,9 +149,6 @@ function hexStringToUint32Array(hexString) {
     return byteArray;
 }
 
-// Renamed from averageMinusMax (webgpu_FE/src/AutoRunShader.jsx:16-23) to match
-// what it actually does: a plain mean. Behaviour is unchanged -- the max/min
-// trimming was already commented out in the original.
 function averageOfRuns(values) {
     if (!values.length) return 0;
     const sum = values.reduce((acc, val) => acc + val, 0);
@@ -177,8 +159,8 @@ const MAX_PER_DIM = 65535; // WebGPU guaranteed maxComputeWorkgroupsPerDimension
 
 /**
  * Split a workgroup count into (x, y, z) so that every dimension stays within
- * the device limit. The shader flattens (x, y, z) back to a single nonce index
- * via grid_width / grid_height, so the result is still ONE dispatch.
+ * the device limit. The shader flattens (x, y, z) back to a single index via
+ * grid_width / grid_height, so the result is still ONE dispatch.
  * Returns null if the count cannot be factored exactly.
  */
 function factorDispatch(wgCount, limit = MAX_PER_DIM) {
@@ -246,26 +228,24 @@ export async function setupDevice(onDeviceLost) {
 }
 
 /**
- * One measurement point. Mirrors webgpu_FE/src/AutoRunShader.jsx:81-98:
- * one discarded warm-up run, then `repeatCount` timed runs, then a plain mean.
- * The arguments handed to runShader (itercount=1, totalThread=1, isTestMode=true)
- * are the same as in the original sweep.
+ * One measurement point: one discarded warm-up run, then `repeatCount` timed
+ * runs, then a plain mean.
  */
 export async function measurePoint(device, plan, repeatCount) {
-    const targetArray = hexStringToUint32Array(PROBE_TARGET);
-    const headerArray = hexStringToUint32Array(PROBE_HEADER);
+    const thresholdArray = hexStringToUint32Array(PROBE_THRESHOLD);
+    const inputArray = hexStringToUint32Array(PROBE_INPUT);
     const { wgs, dwg } = plan;
     const times = [];
 
-    await runShader(device, headerArray, targetArray, wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2], 1, 1, true);
+    await runShader(device, inputArray, thresholdArray, wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2], 1, 1, true);
     for (let run = 0; run < repeatCount; run++) {
-        const res = await runShader(device, headerArray, targetArray, wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2], 1, 1, true);
+        const res = await runShader(device, inputArray, thresholdArray, wgs[0], wgs[1], wgs[2], dwg[0], dwg[1], dwg[2], 1, 1, true);
         times.push(res.time);
     }
 
     const avgSeconds = averageOfRuns(times);
     const totalThreads = plan.achievedThreads;
-    const avgHashrate = avgSeconds > 0 ? totalThreads / avgSeconds : 0;
+    const avgHashesPerSec = avgSeconds > 0 ? totalThreads / avgSeconds : 0;
     return {
         totalThreads,
         workgroupSize: `${wgs[0]}, ${wgs[1]}, ${wgs[2]}`,
@@ -274,8 +254,8 @@ export async function measurePoint(device, plan, repeatCount) {
         times,
         avgSeconds,
         avgMs: avgSeconds * 1000,
-        avgHashrate,
-        avgMHs: avgHashrate / 1e6,
+        avgHashesPerSec,
+        avgMHs: avgHashesPerSec / 1e6,
     };
 }
 
@@ -295,4 +275,4 @@ export async function runSweep(device, requestedList, workgroupSizeX, repeatCoun
     return rows;
 }
 
-export { runShader, hexStringToUint32Array, PROBE_HEADER, PROBE_TARGET, MAX_PER_DIM };
+export { runShader, hexStringToUint32Array, PROBE_INPUT, PROBE_THRESHOLD, MAX_PER_DIM };

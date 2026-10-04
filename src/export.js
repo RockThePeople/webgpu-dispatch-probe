@@ -1,10 +1,5 @@
-// Result export (P6).
-//
-// The original code only ever wrote CSV (a Blob + <a download>, see
-// webgpu_FE/src/AutoRunShader.jsx:142-159). There was no Excel writer in the
-// source repository, so the XLSX path here is new; the CSV path keeps the
-// original's columns (totalThreads, avgSeconds, avgHashrate) as the first three
-// data columns so older result files stay comparable.
+// Result export: one metadata block describing the run, then one row per
+// measurement point, written as .xlsx or .csv.
 
 import { buildXlsx } from './xlsx-min.js';
 
@@ -31,7 +26,7 @@ export function buildMetadata(env) {
 }
 
 const HEADERS = [
-    'totalThreads', 'avgSeconds', 'avgHashrate',
+    'totalThreads', 'avgSeconds', 'avgHashesPerSec',
     'avgMs', 'avgMHs', 'workgroup_size', 'dispatchWorkgroups', 'repeatCount',
 ];
 
@@ -39,7 +34,7 @@ function rowToArray(row, maxRepeats) {
     const base = [
         row.totalThreads,
         Number(row.avgSeconds.toFixed(6)),
-        Number(row.avgHashrate.toFixed(8)),
+        Number(row.avgHashesPerSec.toFixed(8)),
         Number(row.avgMs.toFixed(4)),
         Number(row.avgMHs.toFixed(4)),
         row.workgroupSize,
